@@ -1,0 +1,447 @@
+---
+title: "SLIM Salinity/Tidal"
+author: "Corinne Renshaw"
+date: "2024-06-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown  
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+
+        library(dplyr)
+library(ggplot2)
+library(lme4)
+library(rms)
+library(purrr)
+
+# Libraries
+    library(plyr)
+    library(tidyverse)
+    library(reshape2)
+    library(lubridate)
+    library(knitr)
+    library(dplyr)
+    library(broom)
+
+    library(ggpubr)
+    library(ggthemes)
+    library(gridExtra)
+    library(ggExtra)
+    
+# Interactive Maps
+    library(leaflet)
+library(htmlTable)
+library(htmltools)
+library(htmlwidgets)
+library(readxl)
+```
+
+
+
+# Heidi's model will help - grabbing tidal flux salinity for each month
+
+```{r}
+Cheeca_Rocks_Buoy <- read_excel("Data/Cheeca Rocks Buoy.xlsx")
+View(Cheeca_Rocks_Buoy)
+
+#write.csv(Cheeca_Rocks_Buoy, "Results/name.csv")
+```
+
+
+
+```{r}
+p <- colnames(Cheeca_Rocks_Buoy)
+
+CR_Buoy <- Cheeca_Rocks_Buoy[,c(1,2,3,4,6,7,8)]
+
+colnames(CR_Buoy) <- c("Date", "Time", "Pressure","pCO2_umol_kg", "pH", "SSS", "SST")
+
+
+CR_Buoy$Date <- as.Date(CR_Buoy$Date, format = "%Y-%m-%d")
+CR_Buoy$Year <- format(CR_Buoy$Date, "%Y")
+CR_Buoy$Month <- format(CR_Buoy$Date, "%m")
+CR_Buoy$Day <- format(CR_Buoy$Date, "%d")
+CR_Buoy$Time <- as.POSIXct(as.numeric(CR_Buoy$Time), origin = "1970-01-01", tz = "UTC")
+
+CR_Buoy$Time <- format(CR_Buoy$Time, "%H:%M:%S")
+
+
+
+CR_Buoy <- mutate(CR_Buoy,
+                   SST = as.numeric(SST),
+                   SSS = as.numeric(SSS),
+                   pH = as.numeric(pH),
+                   Day = as.numeric(Day),
+                   Month = as.numeric(Month),
+                  Time = as.numeric(Time),
+                  )
+
+SSS_season<-ggplot(CR_Buoy, aes(x = Time, y = SSS, 
+                                 colour=as.factor(Month))) +
+  geom_jitter(size=0.8)+
+  #scale_x_continuous()+
+  labs(x = "Day", y = "SSS", title = "SSS over Months")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 40, vjust = 0.5))
+SSS_season
+
+
+
+CR_Buoy$TimeOfDay <- as.POSIXct(round(as.numeric(CR_Buoy$Time) / (3 * 60 * 60)) * (3 * 60 * 60), origin = "1970-01-01", tz = "UTC")
+
+
+
+ SSS_season2 <-ggplot(CR_Buoy, aes(x = Time, y = SSS, 
+                                 colour=as.factor(Month))) +
+  geom_point(size=0.8)+
+  facet_wrap(~Year) +
+  scale_x_datetime(breaks = seq(min(CR_Buoy$TimeofDay), max(CR_Buoy$TimeOfDay), by = "3 hours"),
+                   labels = function(x) format(x, "%H:%M")) +
+  #scale_x_continuous()+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "point", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "line", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  labs(x = "Time", y = "SSS", title = "SSS Average of Monthly Values 2011-24")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 5))
+SSS_season2
+
+
+
+SSS_season2 <-ggplot(CR_Buoy, aes(x = Time, y = SSS, 
+                                 colour=as.factor(Year))) +
+  geom_point(size=0.8)+
+  facet_wrap(~Month) +
+  #scale_x_continuous()+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "point", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "line", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  labs(x = "Time", y = "SSS", title = "SSS Average of Monthly Values 2011-24")+
+  theme_minimal()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, size = 5))
+SSS_season2
+
+```
+
+
+
+
+
+
+
+
+
+#Tidal variations
+```{r}
+# Assuming CR_Buoy$Date is already in Date format and CR_Buoy$Month is numeric (1-12)
+
+# Splitting the data frame by Month
+list_of_data_frames <- split(CR_Buoy, CR_Buoy$Month)
+
+# Naming the list elements by month names
+names(list_of_data_frames) <- month.name[1:12]  # Using month.name from base R
+
+# Now, list_of_data_frames contains 12 data frames, each corresponding to a month
+# You can access each data frame like list_of_data_frames$January, list_of_data_frames$February, etc.
+
+# Accessing data frames by name
+#   january_data <- list_of_data_frames$January
+#   february_data <- list_of_data_frames$February
+
+list_of_data_frames$Date <- as.Date(list_of_data_frames$Date, format = "%Y-%m-%d")
+list_of_data_frames$Year <- format(list_of_data_frames$Date, "%Y")
+list_of_data_frames$Month <- format(list_of_data_frames$Date, "%m")
+list_of_data_frames$Day <- format(list_of_data_frames$Date, "%d")
+list_of_data_frames$Time <- as.POSIXct(as.numeric(list_of_data_frames$Time), origin = "1970-01-01", tz = "UTC")
+
+as.numeric(list_of_data_frames$Year)
+as.numeric(list_of_data_frames$Month)
+as.numeric(list_of_data_frames$Day)
+as.numeric(list_of_data_frames$Date)
+
+list_of_data_frames <- mutate(list_of_data_frames,
+                   SST = as.numeric(SST),
+                   SSS = as.numeric(SSS),
+                   pH = as.numeric(pH),
+                   Day = as.numeric(Day),
+                   Month = as.numeric(Month),
+                   Year = as.numeric(Year)
+                  )
+
+
+
+
+#SSS_season2 <-ggplot(january_data , aes(x = Day, y = SSS, 
+ #                                colour=as.factor(Year))) +
+  #geom_jitter(size=0.5)+
+  #scale_x_continuous()+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "errorbar", 
+                #width = 0.2,
+                #position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "point", 
+   #             width = 0.2,
+    #            position=position_dodge(width=0.3))+
+  #stat_summary(fun.data = "mean_cl_boot", geom = "line", 
+     #           width = 0.2,
+      #          position=position_dodge(width=0.3))+
+  #labs(x = "Date", y = "SSS Jan. Tidal Cycle", title = "Jan. SSS by Year")+
+  #theme_minimal()+
+  #theme(axis.text.x = element_text(angle = 40, vjust = 1))
+#SSS_season2
+```
+
+
+
+#Sent to Heidi
+```{r}
+library(ggplot2)
+
+
+list_of_data_frames <- split(CR_Buoy, CR_Buoy$Month)
+
+# Naming the list elements by month names
+names(list_of_data_frames) <- month.name[1:12]
+
+# Convert Date column to Date format
+list_of_data_frames <- lapply(list_of_data_frames, function(CR_Buoy) {
+  CR_Buoy$Date <- as.Date(CR_Buoy$Date, format = "%Y-%m-%d")
+  CR_Buoy$Year <- format(CR_Buoy$Date, "%Y")
+  CR_Buoy$Month <- format(CR_Buoy$Date, "%m")
+  CR_Buoy$Day <- format(CR_Buoy$Date, "%d")
+  #CR_Buoy$Time <- as.POSIXct(as.numeric(CR_Buoy$Time), origin = "1970-01-01", tz = "UTC")
+  CR_Buoy
+})
+
+
+plot_list <- list()
+
+
+for (month in names(list_of_data_frames)) {
+  
+  
+  month_data <- list_of_data_frames[[month]]
+  
+  
+  month_data <- month_data[complete.cases(month_data$Time, month_data$SSS), ]
+  
+  # Create ggplot object for the current month
+  plot <- ggplot(month_data, aes(x = Time, y = SSS, colour = as.factor(Year))) +
+    geom_point(size = 1.0, alpha = 0.5) +  
+    facet_wrap(~Month) +
+    labs(x = "Date", y = paste("SSS", month, sep = " ")) +
+    ggtitle(paste(month, "SSS by Year", sep = " ")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 40, vjust = 1))
+  
+ 
+  plot_list[[month]] <- plot
+  
+  # Save the plot as PNG file
+  ggsave(filename = paste0("Tidal_SSS_Flux/", month, "_SSS_plot.png"), plot = plot, width = 10, height = 6)
+}
+
+# Print all plots from plot_list
+print(plot_list)
+
+
+```
+
+
+# By Month
+```{r}
+
+list_of_data_frames <- split(CR_Buoy, CR_Buoy$Month)
+
+
+names(list_of_data_frames) <- month.name[1:12]
+
+
+list_of_data_frames <- lapply(list_of_data_frames, function(CR_Buoy) {
+  CR_Buoy$Date <- as.Date(CR_Buoy$Date, format = "%Y-%m-%d")
+  CR_Buoy$Year <- format(CR_Buoy$Date, "%Y")
+  CR_Buoy$Month <- format(CR_Buoy$Date, "%m")
+  CR_Buoy$Day <- format(CR_Buoy$Date, "%d")
+  #CR_Buoy$Time <- as.POSIXct(as.numeric(CR_Buoy$Time), origin = "1970-01-01", tz = "UTC")
+  CR_Buoy
+})
+
+
+plot_list <- list()
+
+
+for (month in names(list_of_data_frames)) {
+  
+  
+  month_data <- list_of_data_frames[[month]]
+  
+  
+  month_data <- month_data[complete.cases(month_data$Time, month_data$SSS), ]
+  
+  
+  plot <- ggplot(month_data, aes(x = Time, y = SSS, colour = as.factor(Month))) +
+    geom_point(size = 1.0, alpha = 0.5) +  
+    facet_wrap(~Month) +
+    labs(x = "Date", y = paste("SSS", month, sep = " ")) +
+    ggtitle(paste(month, "SSS by Year", sep = " ")) +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 40, vjust = 1))
+  
+
+  plot_list[[month]] <- plot
+  
+  # Save the plot as PNG file
+  ggsave(filename = paste0("Tidal_SSS_Flux/", month, "_SSS_plot.png"), plot = plot, width = 10, height = 6)
+}
+
+# Print all plots from plot_list
+print(plot_list)
+
+
+```
+
+
+
+
+# By day AND time along the x axis, facet by day
+```{r}
+
+list_of_data_frames <- split(CR_Buoy, CR_Buoy$Month)
+
+
+names(list_of_data_frames) <- month.name[1:12]
+
+
+list_of_data_frames <- lapply(list_of_data_frames, function(CR_Buoy) {
+  CR_Buoy$Date <- as.Date(CR_Buoy$Date, format = "%Y-%m-%d")
+  CR_Buoy$Year <- format(CR_Buoy$Date, "%Y")
+  CR_Buoy$Month <- format(CR_Buoy$Date, "%m")
+  CR_Buoy$Day <- format(CR_Buoy$Date, "%d")
+  # Assuming Time is already in HH:MM:SS format, convert to POSIXct
+  CR_Buoy$Time <- as.POSIXct(CR_Buoy$Time, format = "%H:%M:%S", tz = "UTC")
+  CR_Buoy
+})
+
+
+plot_list <- list()
+
+
+for (month in names(list_of_data_frames)) {
+  
+  
+  month_data <- list_of_data_frames[[month]]
+  
+  
+  month_data <- month_data[complete.cases(month_data$Time, month_data$SSS), ]
+  
+ 
+  plot <- ggplot(month_data, aes(x = Time, y = SSS, colour = as.factor(Year))) +
+    geom_point(size = 1.0, alpha = 0.5) +  
+    facet_wrap(~Day) +  # Facet by Day within each Month
+    labs(x = NULL, y = paste("SSS", month, sep = " ")) +
+    ggtitle(paste(month, "SSS by Time of Day per Month", sep = " ")) +
+    theme_minimal() +
+    theme(
+    axis.text.x = element_text(angle = 90, vjust = 0.5), 
+    panel.border = element_rect(color = "black", fill = NA, size = 1)  
+  )+
+  scale_x_datetime(date_labels = "%H:%M") 
+  plot_list[[month]] <- plot
+  
+  # Save the plot as PNG file
+  ggsave(filename = paste0("SSS_Flux_Shared/", month, "_SSS_plot.png"), plot = plot, width = 10, height = 6)
+}
+
+# Print all plots from plot_list
+print(plot_list)
+
+```
+
+
+# By day AND time along the x axis, facet by month
+```{r}
+# Assuming CR_Buoy is your original data frame
+
+# Convert Date column to Date format
+CR_Buoy$Date <- as.Date(CR_Buoy$Date, format = "%Y-%m-%d")
+CR_Buoy$Year <- format(CR_Buoy$Date, "%Y")
+CR_Buoy$Month <- format(CR_Buoy$Date, "%m")
+CR_Buoy$Day <- format(CR_Buoy$Date, "%d")
+# Assuming Time is already in HH:MM:SS format, convert to POSIXct
+CR_Buoy$Time <- as.POSIXct(CR_Buoy$Time, format = "%H:%M:%S", tz = "UTC")
+
+# Splitting the data frame by day
+list_of_data_frames <- split(CR_Buoy, CR_Buoy$Day)
+
+# Create an empty list to store the ggplot objects
+plot_list <- list()
+
+# Loop through each day data frame
+for (day in names(list_of_data_frames)) {
+  
+  # Extract data frame for the current day
+  day_data <- list_of_data_frames[[day]]
+  
+  # Filter out NA values in Time and SSS columns
+  day_data <- day_data[complete.cases(day_data$Time, day_data$SSS), ]
+  
+  # Create ggplot object for the current day
+  plot <- ggplot(day_data, aes(x = Time, y = SSS, colour = as.factor(Year))) +
+    geom_point(size = 1.0, alpha = 0.5) +  
+    facet_wrap(~Month) +
+    labs(x = "Time of Day", y = paste("SSS", day, sep = " ")) +
+    ggtitle(paste(day, "SSS by Daily Variation over 12 Months", sep = " ")) +
+    theme_minimal() +
+    theme(
+      axis.text.x = element_text(angle = 40, vjust = 0.5),  # Adjust x-axis text position
+      panel.border = element_rect(color = "black", fill = NA, size = 1)  # Add panel border
+    ) +
+    scale_x_datetime(date_labels = "%H:%M")  # Format x-axis labels to show only HH:MM
+  
+  # Store the plot in the plot_list
+  plot_list[[day]] <- plot
+  
+  # Save the plot as PNG file (optional)
+  ggsave(filename = paste0("SSS_Flux_Shared/", day, "_SSS_plot.png"), plot = plot, width = 10, height = 6)
+}
+
+# Print all plots from plot_list
+print(plot_list)
+
+```
+
+
